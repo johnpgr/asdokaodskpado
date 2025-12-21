@@ -1,0 +1,7 @@
+-xobjective-c++
+-std=c++23
+-Wall
+-Wextra
+-Wno-address-of-temporary
+-Iinclude/
+-Isrc/

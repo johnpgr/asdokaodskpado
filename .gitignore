@@ -1,0 +1,6 @@
+out/
+build/out/
+build/*.dylib
+build/*.dSYM/
+build/lock.tmp
+build/game_temp.dylib
