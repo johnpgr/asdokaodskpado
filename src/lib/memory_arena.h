@@ -7,6 +7,15 @@ struct MemoryArena {
     usize size;
     usize used;
 
+    // Initialize an arena from a pre-allocated buffer
+    static MemoryArena make(void* buffer, usize size_bytes) {
+        MemoryArena result = {};
+        result.base = (u8*)buffer;
+        result.size = size_bytes;
+        result.used = 0;
+        return result;
+    }
+
     // Push raw bytes, returns aligned pointer
     void* push_size(usize size_bytes, usize alignment = alignof(max_align_t)) {
         usize aligned_offset = (used + (alignment - 1)) & ~(alignment - 1);
@@ -52,24 +61,15 @@ struct MemoryArena {
 struct TemporaryMemory {
     MemoryArena* arena;
     usize saved_used;
+
+    TemporaryMemory make(MemoryArena* arena) {
+        TemporaryMemory result;
+        result.arena = arena;
+        result.saved_used = arena->used;
+        return result;
+    }
+
+    void end() {
+        arena->used = saved_used;
+    }
 };
-
-inline TemporaryMemory begin_temporary_memory(MemoryArena* arena) {
-    TemporaryMemory result;
-    result.arena = arena;
-    result.saved_used = arena->used;
-    return result;
-}
-
-inline void end_temporary_memory(TemporaryMemory temp) {
-    temp.arena->used = temp.saved_used;
-}
-
-// Initialize an arena from a pre-allocated buffer
-inline MemoryArena make_arena(void* buffer, usize size_bytes) {
-    MemoryArena result = {};
-    result.base = (u8*)buffer;
-    result.size = size_bytes;
-    result.used = 0;
-    return result;
-}

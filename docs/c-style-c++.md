@@ -18,9 +18,9 @@ The divergence begins with the treatment of the Central Processing Unit (CPU). I
 
 | Feature | Status in Orthodox C++ | Rationale and Hardware Implication |
 | :---- | :---- | :---- |
-| **Structs / Classes** | **Accepted** | Used for data grouping. Methods are allowed but often treated as helpers or syntax sugar for C-style functions. |
-| **Function Overloading** | **Accepted** | Improves readability (e.g., Math::Dot(v2) vs Math::Dot(v3)) without incurring runtime cost. |
-| **Operator Overloading** | **Accepted** | Essential for math types (Vector3 + Vector3), allowing mathematical code to read like equations. |
+| **Structs / Classes** | **Accepted** | Used for data grouping. Methods are allowed but often treated as helpers or syntax sugar for C-style functions. Static factory functions (`Type::make()`) are preferred for initialization. |
+| **Function Overloading** | **Accepted** | Improves readability (e.g., `math::dot(v2)` vs `math::dot(v3)`) without incurring runtime cost. |
+| **Operator Overloading** | **Accepted** | Essential for math types (`Vec3 + Vec3`), allowing mathematical code to read like equations. |
 | **Templates** | **Restricted** | Used only for generic containers or math, never for metaprogramming complex logic. Explicit instantiation is preferred. |
 | **Exceptions** | **Forbidden** | Hidden control flow, high runtime cost, binary bloat, and interference with simple error handling logic. |
 | **RTTI** | **Forbidden** | Unnecessary runtime overhead; use tagged unions or enums instead for type identification. |
@@ -62,10 +62,10 @@ y += 50.0f;
 
 **Stage 2: Introducing the Layout Struct**
 
-Muratori noticed that x and y were effectively acting as a "stack frame" for the layout operation. He compressed this into a Panel_Layout struct.
+Muratori noticed that x and y were effectively acting as a "stack frame" for the layout operation. He compressed this into a `PanelLayout` struct.
 
 ```cpp
-struct Panel_Layout {
+struct PanelLayout {
     float at_x;
     float at_y;
     float row_height;
@@ -74,7 +74,7 @@ struct Panel_Layout {
 
 **Stage 3: Functional Compression**
 
-The repetitive incrementing of y was compressed into a function layout.row(). This led to the final API, which is semantically compressed:
+The repetitive incrementing of y was compressed into a function `layout.row()`. This led to the final API, which is semantically compressed:
 
 ```cpp
 layout.row();
@@ -83,7 +83,7 @@ layout.row();
 if (layout.push_button("Load")) { load_game(); }
 ```
 
-The critical insight here is that Panel_Layout was not designed as a "Layout Manager Class" upfront. It emerged only after the requirement for managing vertical spacing became repetitive in the actual code.<sup>7</sup>
+The critical insight here is that `PanelLayout` was not designed as a "Layout Manager Class" upfront. It emerged only after the requirement for managing vertical spacing became repetitive in the actual code.<sup>7</sup>
 
 ### **2.3 The Rejection of Premature Reusability**
 
@@ -108,23 +108,25 @@ In the Muratori style, this often manifests as "hot" vs. "cold" data separation.
 
 ### **3.2 The Switch Statement as Polymorphism**
 
-One of the most controversial aspects of this style is the replacement of virtual functions with switch statements. In a standard OOP Shape example, one would call shape->Area(), and the vtable would dispatch to Circle::Area or Square::Area.
+One of the most controversial aspects of this style is the replacement of virtual functions with switch statements. In a standard OOP Shape example, one would call `shape->area()`, and the vtable would dispatch to `Circle::area()` or `Square::area()`.
 
 The Orthodox approach uses a tagged union or a type enum:
 
 ```cpp
+enum class ShapeType { Circle, Square };
+
 struct Shape {
-    ShapeType Type;
+    ShapeType type;
     union {
         Circle circle;
         Square square;
     };
 };
 
-float GetArea(Shape *shape) {
-    switch (shape->Type) {
-        case Shape_Circle: return Pi * shape->circle.r * shape->circle.r;
-        case Shape_Square: return shape->square.s * shape->square.s;
+float get_area(Shape *shape) {
+    switch (shape->type) {
+        case ShapeType::Circle: return PI * shape->circle.r * shape->circle.r;
+        case ShapeType::Square: return shape->square.s * shape->square.s;
     }
     return 0;
 }
@@ -132,7 +134,7 @@ float GetArea(Shape *shape) {
 
 **Hardware Justification:**
 
-1. **Instruction Cache:** The code for GetArea is contiguous. The CPU loads the function and predicts the branches. In the vtable approach, the code for Circle::Area and Square::Area might be pages apart in memory.
+1. **Instruction Cache:** The code for `get_area` is contiguous. The CPU loads the function and predicts the branches. In the vtable approach, the code for `Circle::area()` and `Square::area()` might be pages apart in memory.
 2. **Inlining:** The compiler can verify the switch and potentially inline the math directly into the loop, allowing for SIMD (Single Instruction, Multiple Data) optimizations that are impossible across a virtual call boundary.<sup>2</sup>
 
 ### **3.3 Entity Systems**
@@ -159,25 +161,33 @@ General-purpose allocators (malloc/free) are designed to handle the worst-case s
 An Arena (or Linear Allocator) drastically simplifies this. It consists of a pointer to the start of a large block of memory and a "used" offset.
 
 ```cpp
-struct memory_arena {
-    memory_index Size;
-    u8 *Base;
-    memory_index Used;
-};
+struct MemoryArena {
+    u8 *base;
+    usize size;
+    usize used;
 
-void *PushSize_(memory_arena *Arena, memory_index Size) {
-    Assert((Arena->Used + Size) <= Arena->Size);
-    void *Result = Arena->Base + Arena->Used;
-    Arena->Used += Size;
-    return Result;
-}
+    static MemoryArena make(void *buffer, usize size_bytes) {
+        MemoryArena result = {};
+        result.base = (u8 *)buffer;
+        result.size = size_bytes;
+        result.used = 0;
+        return result;
+    }
+
+    void *push_size(usize size_bytes) {
+        ASSERT((used + size_bytes) <= size);
+        void *result = base + used;
+        used += size_bytes;
+        return result;
+    }
+};
 ```
 
 **Performance Characteristics:**
 
-* **Allocation Cost:** The cost is essentially a single addition operation (incrementing the Used counter). It is $O(1)$ and takes nanoseconds.
+* **Allocation Cost:** The cost is essentially a single addition operation (incrementing the `used` counter). It is $O(1)$ and takes nanoseconds.
 * **Locality:** Objects allocated sequentially in time are guaranteed to be sequential in memory. This is the optimal pattern for the CPU cache.
-* **Deallocation:** Individual deallocation is forbidden. Instead, the entire arena is reset by setting Used = 0. This eliminates the possibility of memory leaks for the lifespan of the arena.<sup>15</sup>
+* **Deallocation:** Individual deallocation is forbidden. Instead, the entire arena is reset by setting `used = 0`. This eliminates the possibility of memory leaks for the lifespan of the arena.<sup>15</sup>
 
 ### **4.3 Temporary Memory and Scoping**
 
@@ -185,21 +195,21 @@ For scratch work (e.g., string concatenation, temporary arrays during a frame), 
 
 ```cpp
 // Begin a temporary scope
-temporary_memory Temp = BeginTemporaryMemory(&Arena);
+TemporaryMemory temp = TemporaryMemory::make(&arena);
 
 // Do allocations
-u32 *TempArray = PushArray(&Arena, 1000, u32);
+u32 *temp_array = arena.push_array<u32>(1000);
 //... heavy processing...
 
-// End scope - resets the Arena pointer to where it was
-EndTemporaryMemory(Temp);
+// End scope - resets the arena pointer to where it was
+temp.end();
 ```
 
 This pattern allows for massive amounts of temporary data to be used without fragmentation or the overhead of finding free blocks. It is effectively a "programmable stack".<sup>16</sup>
 
 ### **4.4 The "Mental Overhead" Argument**
 
-Critics of this style often argue that manual memory management increases cognitive load. Muratori counters that RAII increases cognitive load by obscuring ownership. With std::shared_ptr, the lifetime of an object is non-deterministic—it depends on the last pointer disappearing. With Arenas, the lifetime is explicit: "This object lives as long as the Level Arena lives." This makes reasoning about object lifecycles trivial and eliminates "use-after-free" bugs relative to complex pointer graphs.<sup>12</sup>
+Critics of this style often argue that manual memory management increases cognitive load. Muratori counters that RAII increases cognitive load by obscuring ownership. With std::shared_ptr, the lifetime of an object is non-deterministic—it depends on the last pointer disappearing. With Arenas, the lifetime is explicit: "This object lives as long as the `level_arena` lives." This makes reasoning about object lifecycles trivial and eliminates "use-after-free" bugs relative to complex pointer graphs.<sup>12</sup>
 
 ---
 
@@ -278,42 +288,64 @@ You are an expert systems programmer adhering to the "Orthodox C++" and "Handmad
 
 * **Rule 1: No General Allocators.** Never use new, delete, malloc, or free for game objects.
 * **Rule 2: Use Arenas.** All memory must be allocated from a MemoryArena.
-  * **Context:** Pass MemoryArena *Arena to functions that need to allocate.
-  * **Mechanism:** Use PushStruct(Arena, Type) and PushArray(Arena, Count, Type) macros.
-* **Rule 3: Explicit Lifetimes.** Use BeginTemporaryMemory and EndTemporaryMemory for scoped allocations. Never rely on destructors to clean up resources.
-* **Rule 4: Pointers over References.** Use pointers (Type *) for optional or mutable data. Use References only when syntactically necessary for operator overloading. Pointers are explicit about the potential for null.
+  * **Context:** Pass `MemoryArena *arena` to functions that need to allocate.
+  * **Mechanism:** Use `arena->push_struct<Type>()` and `arena->push_array<Type>(count)` methods.
+* **Rule 3: Explicit Lifetimes.** Use `TemporaryMemory::make()` and `end()` for scoped allocations. Never rely on destructors to clean up resources.
+* **Rule 4: Pointers over References.** Use pointers (`Type *`) for optional or mutable data. Use References only when syntactically necessary for operator overloading. Pointers are explicit about the potential for null.
 
 #### **III. Data Structure Guidelines**
 
-* **Rule 5: PODs (Plain Old Data).** Structs should primarily contain data. Methods on structs are permitted but should be viewed as syntax sugar. Prefer free functions: UpdatePlayer(Player *P) over P->Update().
-* **Rule 6: No STL.** Strictly forbidden: std::vector, std::string, std::map, std::unique_ptr.
-  * **Alternative:** Use fixed-size arrays where possible. Use arena-allocated dynamic arrays (Type *Data; int Count;) otherwise.
-* **Rule 7: Strings.** Use a custom string view struct:
+* **Rule 5: PODs (Plain Old Data).** Structs should primarily contain data. Methods on structs are permitted but should be viewed as syntax sugar. Prefer free functions: `update_player(Player *p)` over `p->update()`.
+* **Rule 6: Static Factory Functions.** Use static `make()` functions for struct initialization instead of constructors.
   ```cpp
-  struct string { u8 *Data; s64 Count; };
-  #define Str(s) { (u8 *)s, sizeof(s)-1 }
+  struct MemoryArena {
+      u8 *base;
+      usize size;
+      usize used;
+
+      static MemoryArena make(void *buffer, usize size_bytes) {
+          MemoryArena result = {};
+          result.base = (u8 *)buffer;
+          result.size = size_bytes;
+          result.used = 0;
+          return result;
+      }
+  };
+
+  // Usage:
+  MemoryArena arena = MemoryArena::make(buffer, size);
+  ```
+  This pattern is explicit, avoids hidden constructor magic, and makes initialization order clear.
+* **Rule 7: No STL.** Strictly forbidden: std::vector, std::string, std::map, std::unique_ptr.
+  * **Alternative:** Use fixed-size arrays where possible. Use arena-allocated dynamic arrays (`Type *data; int count;`) otherwise.
+* **Rule 8: Strings.** Use a custom string view struct:
+  ```cpp
+  struct String { u8 *data; s64 count; };
+  #define STR(s) { (u8 *)s, sizeof(s)-1 }
   ```
   Do not assume null-termination. Do not allocate strings on the heap implicitly.
 
 #### **IV. Control Flow & Error Handling**
 
-* **Rule 8: No Exceptions.** Never use try, catch, or throw.
-* **Rule 9: Assertions.** Use Assert() liberally for programmer errors (impossible conditions). Fail fast.
-* **Rule 10: Return Values.** For runtime errors (I/O, Network), return a status code or a result struct.
-  * *Pattern:* internal bool32 LoadFile(char *Filename, file_contents *Result)
-* **Rule 11: Switch over Virtuals.** Use enum types and switch statements for polymorphism. Group behavior by operation, not by type.
+* **Rule 9: No Exceptions.** Never use try, catch, or throw.
+* **Rule 10: Assertions.** Use `ASSERT()` liberally for programmer errors (impossible conditions). Fail fast.
+* **Rule 11: Return Values.** For runtime errors (I/O, Network), return a status code or a result struct.
+  * *Pattern:* `internal bool32 load_file(char *filename, FileContents *result)`
+* **Rule 12: Switch over Virtuals.** Use enum types and switch statements for polymorphism. Group behavior by operation, not by type.
 
 #### **V. Style & Formatting**
 
-* **Naming:**
-  * **Types:** snake_case (e.g., game_state, sim_entity) OR PascalCase (project dependent). Casey uses snake_case for types in *Handmade Hero*.
-  * **Functions:** PascalCase (e.g., PushStruct, UpdateAndRender).
-  * **Variables:** PascalCase for local variables, snake_case for struct members (Context dependent, Casey varies).
-  * **Macros:** UPPER_SNAKE_CASE.
+* **Naming (Rust-style):**
+  * **Types:** PascalCase (e.g., `GameState`, `SimEntity`, `MemoryArena`).
+  * **Functions/Methods:** snake_case (e.g., `push_struct`, `update_and_render`, `make`).
+  * **Variables:** snake_case (e.g., `entity_count`, `base`, `size_bytes`).
+  * **Constants:** UPPER_SNAKE_CASE (e.g., `MAX_ENTITIES`, `PI`).
+  * **Macros:** UPPER_SNAKE_CASE (e.g., `ASSERT`, `KILOBYTES`).
+  * **Enum Variants:** PascalCase (e.g., `EntityType::Hero`, `EntityType::Monster`).
 * **File Structure:**
   * Use .h for struct definitions and macros.
   * Use .cpp for implementations.
-  * **Unity Build:** All .cpp files are #included into a single win32_layer.cpp. Do not create separate compilation units.
+  * **Unity Build:** All .cpp files are #included into a single platform layer file. Do not create separate compilation units.
 
 #### **VI. Example: Correct vs. Incorrect**
 
@@ -341,21 +373,21 @@ void Game::Loop() {
 **Correct (Orthodox C++):**
 
 ```cpp
-enum entity_type { Entity_Hero, Entity_Monster };
+enum class EntityType { Hero, Monster };
 
-struct entity {
-    entity_type Type;
-    v3 P; // Position
-    string Name;
+struct Entity {
+    EntityType type;
+    v3 p; // Position
+    String name;
     // Data is inline or handled via IDs
 };
 
-void UpdateAndRender(game_state *State) {
-    for (int I = 0; I < State->EntityCount; ++I) {
-        entity *E = State->Entities + I;
-        switch (E->Type) {
-            case Entity_Hero: UpdateHero(E); break;
-            case Entity_Monster: UpdateMonster(E); break;
+void update_and_render(GameState *state) {
+    for (int i = 0; i < state->entity_count; ++i) {
+        Entity *e = state->entities + i;
+        switch (e->type) {
+            case EntityType::Hero: update_hero(e); break;
+            case EntityType::Monster: update_monster(e); break;
         }
     }
 }
@@ -365,7 +397,7 @@ void UpdateAndRender(game_state *State) {
 
 ## **7. Detailed Analysis of Key Technical Patterns**
 
-### **7.1 String Handling: The string Struct**
+### **7.1 String Handling: The String Struct**
 
 The rejection of std::string is central to the Orthodox style. std::string manages its own memory, often performs a small allocation on the heap (unless Short String Optimization applies), and ensures null-termination. This behavior is "opaque."
 
@@ -389,14 +421,14 @@ In IMGUI, the UI is code-driven and stateless (from the library's perspective).
 
 ```cpp
 // This function runs every frame
-if (Button(UI, "Click Me")) {
-    PerformAction();
+if (button(ui, "Click Me")) {
+    perform_action();
 }
 ```
 
 **Benefits for Systems Programming:**
 
-1. **Sync:** There is no state synchronization problem. The UI *is* the logic. If the boolean ShowWindow is false, the code path that draws the window is never executed.
+1. **Sync:** There is no state synchronization problem. The UI *is* the logic. If the boolean `show_window` is false, the code path that draws the window is never executed.
 2. **Refactoring:** Moving a button is as simple as moving the line of code. There is no object hierarchy to restructure.
 3. **Memory:** It requires almost no memory allocation for the UI structure itself, fitting perfectly with the Arena allocator model.<sup>27</sup>
 
@@ -405,8 +437,8 @@ if (Button(UI, "Click Me")) {
 The architecture of *Handmade Hero* treats the game logic as a "service" provided to the platform layer.
 
 * **Memory Partitioning:** The platform layer allocates a single contiguous block of memory (e.g., 1GB) via VirtualAlloc.
-* **Passing State:** This block is cast to a game_memory struct and passed to the game DLL.
-* **Reloading:** When the game.dll file changes (detected via file timestamps), the platform layer unloads the old DLL, copies the new one to a temp file, loads it, and calls GameGetSoundSamples or GameUpdateAndRender again, passing the *same* memory block.
+* **Passing State:** This block is cast to a `GameMemory` struct and passed to the game DLL.
+* **Reloading:** When the game.dll file changes (detected via file timestamps), the platform layer unloads the old DLL, copies the new one to a temp file, loads it, and calls `game_get_sound_samples` or `game_update_and_render` again, passing the *same* memory block.
 * **Result:** The game logic updates live without losing the state of the world (player position, inventory, etc.), because the state lives in the platform layer's memory, not the DLL's global variables.<sup>29</sup>
 
 ### **7.4 The "Result" Pattern for Error Handling**
@@ -416,18 +448,18 @@ Without exceptions, error handling must be explicit. The style uses a variation 
 **Pattern:**
 
 ```cpp
-struct file_read_result {
-    void *Content;
-    u32 Size;
-    bool32 Success;
+struct FileReadResult {
+    void *content;
+    u32 size;
+    bool32 success;
 };
 
-file_read_result ReadFile(char *Filename) {
-    file_read_result Result = {};
+FileReadResult read_file(char *filename) {
+    FileReadResult result = {};
     //... Implementation...
-    if (Failed) { Result.Success = false; return Result; }
-    Result.Success = true;
-    return Result;
+    if (failed) { result.success = false; return result; }
+    result.success = true;
+    return result;
 }
 ```
 
@@ -481,11 +513,13 @@ The adoption of this style is a commitment to understanding the machine. It remo
 | **Primary Abstraction** | The Object (Class) | The Data (Struct) |
 | **Memory Model** | Heap-based, Individual Allocations | Region-based, Arena Allocations |
 | **Polymorphism** | Runtime (Virtual Tables) | Compile-time (Switch/Enums) |
-| **Iteration Strategy** | Iterators (begin() / end()) | Index-based Loops (int i) |
+| **Iteration Strategy** | Iterators (`begin()` / `end()`) | Index-based Loops (`int i`) |
 | **Build Strategy** | Modular (Linking Objects) | Unified (Single Translation Unit) |
 | **Dependency Mgmt** | Package Managers / CMake | Vendored Source / Batch Files |
 | **Mental Model** | "How do I model this concept?" | "How does the CPU process this?" |
 | **Error Model** | Exceptions (Implicit) | Return Values / Assertions (Explicit) |
+| **Initialization** | Constructors (Implicit) | Static Factory Functions (`Type::make()`) |
+| **Naming Style** | Various (often camelCase) | Rust-style (PascalCase types, snake_case functions) |
 
 This table serves as a quick-reference guide to the fundamental shifts required when transitioning from standard industry C++ to the high-performance Orthodox style.
 
