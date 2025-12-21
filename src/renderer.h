@@ -1,11 +1,10 @@
 #pragma once
 
 #include "lib/def.h"
-#include "lib/memory_arena.h"
 
 struct Renderer;
 
-Renderer* renderer_init(MemoryArena* arena);
+Renderer* renderer_init();
 
 void renderer_begin_frame(Renderer* renderer, u32 width, u32 height);
 void renderer_end_frame(Renderer* renderer);

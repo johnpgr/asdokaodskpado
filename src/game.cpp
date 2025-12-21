@@ -12,7 +12,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         state->player_vy = 100.0f;
         state->player_color_idx = 0;
 
-        state->permanent_arena = make_arena(
+        state->permanent_arena = MemoryArena::make(
             (u8*)memory->permanent_storage + sizeof(GameState),
             memory->permanent_storage_size - sizeof(GameState)
         );
@@ -21,7 +21,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
 
     // MemoryArena transient_arena =
-    //     make_arena(memory->transient_storage,
+    //     MemoryArena::make(memory->transient_storage,
     //     memory->transient_storage_size);
 
     f32 dt = input->dt_for_frame;

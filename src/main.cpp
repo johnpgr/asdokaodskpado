@@ -18,7 +18,6 @@ static RenderCommands global_render_commands = {};
 static PlatformDLL global_game_dll = {};
 static GameCode global_game_code = {};
 static Renderer* global_renderer = nullptr;
-static MemoryArena global_renderer_arena = {};
 
 static void process_button_event(GameButtonState* state, b32 is_down) {
     if (state->ended_down != is_down) {
@@ -98,26 +97,19 @@ static void init() {
     global_game_memory.transient_storage =
         (u8*)base_memory + global_game_memory.permanent_storage_size;
 
-    // Separate arena for renderer (persistent) - not reset each frame
-    // Needs ~1.25MB for vertex buffer (40k vertices * 32 bytes) plus other data
-    void* renderer_memory = platform_alloc(MB(2));
-    ASSERT(renderer_memory != nullptr);
-    global_renderer_arena = make_arena(renderer_memory, MB(2));
-
     // Arena for render commands (reset each frame)
     void* render_memory = platform_alloc(MB(4));
     ASSERT(render_memory != nullptr);
 
-    global_render_commands.width = 800;
-    global_render_commands.height = 600;
-    global_render_commands.arena = make_arena(render_memory, MB(4));
+    global_render_commands.width = 320;
+    global_render_commands.height = 180;
+    global_render_commands.arena = MemoryArena::make(render_memory, MB(4));
 
     sg_setup(&(sg_desc){
         .environment = sglue_environment(),
     });
 
-    // Use dedicated renderer arena (not reset each frame)
-    global_renderer = renderer_init(&global_renderer_arena);
+    global_renderer = renderer_init();
 
     global_game_dll = platform_load_game_code(
         "out/libgame.dylib",
@@ -156,8 +148,8 @@ static void frame() {
 
     renderer_begin_frame(
         global_renderer,
-        global_render_commands.width,
-        global_render_commands.height
+        sapp_width(),
+        sapp_height()
     );
 
     execute_render_commands(global_renderer, &global_render_commands);
@@ -169,7 +161,6 @@ static void frame() {
 
 static void cleanup() {
     platform_unload_game_code(&global_game_dll);
-    // Note: renderer cleanup is handled by arena - no need to call shutdown
     sg_shutdown();
 }
 
