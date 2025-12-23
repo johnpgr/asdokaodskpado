@@ -3,19 +3,26 @@
 #include "game_interface.h"
 #include "lib/def.h"
 #include "platform/file_watcher.h"
-#include <stdio.h>
+#include <cstdio>
+#include <print>
+
+using std::println;
 #include <string.h>
 
 #ifdef _WIN32
-    #define WIN32_LEAN_AND_MEAN
-    #include <windows.h>
-    #define DLL_EXT ".dll"
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#define DLL_EXT ".dll"
 #else
-    #include <dlfcn.h>
-    #include <fcntl.h>
-    #include <stdlib.h>
-    #include <unistd.h>
-    #define DLL_EXT ".so"
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
+#ifdef __APPLE__
+#define DLL_EXT ".dylib"
+#else
+#define DLL_EXT ".so"
+#endif
 #endif
 
 static u32 g_dll_load_counter = 0;
@@ -61,7 +68,10 @@ inline void platform_copy_file(const char* source, const char* dest) {
 inline b32 platform_file_exists(const char* path) {
 #ifdef _WIN32
     DWORD attrib = GetFileAttributesA(path);
-    return (attrib != INVALID_FILE_ATTRIBUTES && !(attrib & FILE_ATTRIBUTE_DIRECTORY));
+    return (
+        attrib != INVALID_FILE_ATTRIBUTES &&
+        !(attrib & FILE_ATTRIBUTE_DIRECTORY)
+    );
 #else
     return access(path, F_OK) == 0;
 #endif
@@ -104,14 +114,14 @@ inline PlatformDLL platform_load_game_code(
 #ifdef _WIN32
     result.handle = LoadLibraryA(result.temp_dll_path);
     if (!result.handle) {
-        printf("LoadLibrary failed: %lu\n", GetLastError());
+        println("LoadLibrary failed: {}", GetLastError());
         result.is_valid = false;
         return result;
     }
 #else
     result.handle = dlopen(result.temp_dll_path, RTLD_NOW);
     if (!result.handle) {
-        printf("dlopen failed: %s\n", dlerror());
+        println("dlopen failed: {}", dlerror());
         result.is_valid = false;
         return result;
     }
@@ -147,7 +157,8 @@ inline GameCode platform_get_game_code(PlatformDLL* dll) {
 #ifdef _WIN32
     result.update_and_render = (game_update_and_render_func*)
         GetProcAddress(dll->handle, "game_update_and_render");
-    auto get_version = (u32(*)())GetProcAddress(dll->handle, "game_get_version");
+    auto get_version =
+        (u32(*)())GetProcAddress(dll->handle, "game_get_version");
 #else
     result.update_and_render = (game_update_and_render_func*)
         dlsym(dll->handle, "game_update_and_render");
@@ -158,7 +169,7 @@ inline GameCode platform_get_game_code(PlatformDLL* dll) {
     result.version = get_version ? get_version() : 0;
 
     if (!result.is_valid) {
-        printf("Failed to load game functions\n");
+        println("Failed to load game functions");
     }
 
     return result;

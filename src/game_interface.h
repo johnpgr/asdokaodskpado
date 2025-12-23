@@ -39,6 +39,7 @@ enum RenderCommandType {
     RenderCommand_Clear,
     RenderCommand_Rect,
     RenderCommand_Sprite,
+    RenderCommand_AtlasSprite,
 };
 
 struct RenderCommandHeader {
@@ -59,6 +60,14 @@ struct RenderCommandRect {
 struct RenderCommandSprite {
     RenderCommandHeader header;
     f32 x, y, w, h;
+    u32 texture_id;
+    Color tint;
+};
+
+struct RenderCommandAtlasSprite {
+    RenderCommandHeader header;
+    f32 x, y, w, h;     // Destination position and size
+    f32 u0, v0, u1, v1; // UV coordinates for atlas sub-region
     u32 texture_id;
     Color tint;
 };

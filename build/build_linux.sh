@@ -24,9 +24,9 @@ rm -f lock.tmp
 
 echo "Building main..."
 $CXX $COMPILER_FLAGS $INCLUDE_FLAGS \
-    src/platform/linux_main.cpp \
-    src/renderer_opengl.cpp \
-    src/platform/opengl_loader.cpp \
+    src/main.linux.cpp \
+    src/renderer.opengl.cpp \
+    src/util/loader.opengl.cpp \
     -o out/main \
     -lGL -lX11 -ldl -lpthread
 

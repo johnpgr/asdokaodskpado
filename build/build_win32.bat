@@ -14,9 +14,9 @@ del lock.tmp
 
 echo Building main.exe...
 clang++ %COMPILER_FLAGS% %INCLUDE_FLAGS% ^
-    src/platform/win32_main.cpp ^
-    src/renderer_opengl.cpp ^
-    src/platform/opengl_loader.cpp ^
+    src/main.win32.cpp ^
+    src/renderer.opengl.cpp ^
+    src/util/loader.opengl.cpp ^
     -o out/main.exe ^
     -lopengl32 -lgdi32 -luser32
 

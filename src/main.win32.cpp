@@ -1,20 +1,34 @@
 // Windows Platform Layer - Win32 + WGL + OpenGL 3.3 Core
 
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include <gl/gl.h>
+#include <windows.h>
 
 #include "game_interface.h"
 #include "platform/dll_loader.h"
+#include "platform/loader.opengl.h"
 #include "platform/memory.h"
-#include "platform/opengl_loader.h"
 #include "renderer.h"
 
-#include <stdio.h>
+#include <cstdio>
+#include <print>
+
+using std::println;
 
 // WGL extension function types
-typedef HGLRC (WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC)(HDC hDC, HGLRC hShareContext, const int *attribList);
-typedef BOOL (WINAPI *PFNWGLCHOOSEPIXELFORMATARBPROC)(HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats);
+typedef HGLRC(WINAPI* PFNWGLCREATECONTEXTATTRIBSARBPROC)(
+    HDC hDC,
+    HGLRC hShareContext,
+    const int* attribList
+);
+typedef BOOL(WINAPI* PFNWGLCHOOSEPIXELFORMATARBPROC)(
+    HDC hdc,
+    const int* piAttribIList,
+    const FLOAT* pfAttribFList,
+    UINT nMaxFormats,
+    int* piFormats,
+    UINT* nNumFormats
+);
 
 // WGL constants
 #define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
@@ -67,6 +81,24 @@ static void reset_input_half_transitions(GameInput* input) {
     }
 }
 
+/**
+ * Executes all render commands stored in the command buffer.
+ *
+ * This function iterates through a linear arena of serialized render commands,
+ * parsing each command header to determine its type, then dispatching to the
+ * appropriate renderer function. Commands are tightly packed in memory with
+ * variable sizes based on their type.
+ *
+ * @param renderer  The renderer instance to execute commands on.
+ * @param commands  The render command buffer containing serialized commands.
+ *                  Commands are stored sequentially starting at arena.base,
+ *                  with arena.used indicating the total bytes of commands.
+ *
+ * Supported command types:
+ *   - RenderCommand_Clear:  Sets the clear color for the frame
+ *   - RenderCommand_Rect:   Draws a colored rectangle
+ *   - RenderCommand_Sprite: Draws a textured sprite with optional tint
+ */
 static void
 execute_render_commands(Renderer* renderer, RenderCommands* commands) {
     u8* base = (u8*)commands->arena.base;
@@ -85,14 +117,27 @@ execute_render_commands(Renderer* renderer, RenderCommands* commands) {
 
             case RenderCommand_Rect: {
                 RenderCommandRect* cmd = (RenderCommandRect*)at;
-                renderer_draw_rect(renderer, cmd->x, cmd->y, cmd->w, cmd->h, cmd->color);
+                renderer_draw_rect(
+                    renderer,
+                    cmd->x,
+                    cmd->y,
+                    cmd->w,
+                    cmd->h,
+                    cmd->color
+                );
                 at += sizeof(RenderCommandRect);
             } break;
 
             case RenderCommand_Sprite: {
                 RenderCommandSprite* cmd = (RenderCommandSprite*)at;
                 renderer_draw_sprite(
-                    renderer, cmd->x, cmd->y, cmd->w, cmd->h, cmd->texture_id, cmd->tint
+                    renderer,
+                    cmd->x,
+                    cmd->y,
+                    cmd->w,
+                    cmd->h,
+                    cmd->texture_id,
+                    cmd->tint
                 );
                 at += sizeof(RenderCommandSprite);
             } break;
@@ -120,7 +165,8 @@ static void process_keyboard_message(WPARAM wParam, b32 is_down) {
     }
 }
 
-static LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+static LRESULT CALLBACK
+window_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CLOSE:
             g_running = false;
@@ -204,7 +250,7 @@ static b32 create_window_and_context(HINSTANCE hInstance) {
     wc.lpszClassName = "GameWindowClass";
 
     if (!RegisterClassA(&wc)) {
-        printf("Failed to register window class\n");
+        println("Failed to register window class");
         return false;
     }
 
@@ -217,13 +263,18 @@ static b32 create_window_and_context(HINSTANCE hInstance) {
         wc.lpszClassName,
         "Game",
         WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-        CW_USEDEFAULT, CW_USEDEFAULT,
-        rect.right - rect.left, rect.bottom - rect.top,
-        nullptr, nullptr, hInstance, nullptr
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        rect.right - rect.left,
+        rect.bottom - rect.top,
+        nullptr,
+        nullptr,
+        hInstance,
+        nullptr
     );
 
     if (!g_window) {
-        printf("Failed to create window\n");
+        println("Failed to create window");
         return false;
     }
 
@@ -241,18 +292,18 @@ static b32 create_window_and_context(HINSTANCE hInstance) {
 
     int pixel_format = ChoosePixelFormat(g_device_context, &pfd);
     if (!pixel_format) {
-        printf("Failed to choose pixel format\n");
+        println("Failed to choose pixel format");
         return false;
     }
 
     if (!SetPixelFormat(g_device_context, pixel_format, &pfd)) {
-        printf("Failed to set pixel format\n");
+        println("Failed to set pixel format");
         return false;
     }
 
     HGLRC dummy_context = wglCreateContext(g_device_context);
     if (!dummy_context) {
-        printf("Failed to create dummy context\n");
+        println("Failed to create dummy context");
         return false;
     }
 
@@ -260,24 +311,29 @@ static b32 create_window_and_context(HINSTANCE hInstance) {
 
     // Get WGL extension functions
     PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB =
-        (PFNWGLCREATECONTEXTATTRIBSARBPROC)wglGetProcAddress("wglCreateContextAttribsARB");
+        (PFNWGLCREATECONTEXTATTRIBSARBPROC
+        )wglGetProcAddress("wglCreateContextAttribsARB");
 
     if (!wglCreateContextAttribsARB) {
-        printf("wglCreateContextAttribsARB not available\n");
+        println("wglCreateContextAttribsARB not available");
         return false;
     }
 
     // Create OpenGL 3.3 Core context
     int context_attribs[] = {
-        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-        WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+        WGL_CONTEXT_MAJOR_VERSION_ARB,
+        3,
+        WGL_CONTEXT_MINOR_VERSION_ARB,
+        3,
+        WGL_CONTEXT_PROFILE_MASK_ARB,
+        WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
         0
     };
 
-    g_gl_context = wglCreateContextAttribsARB(g_device_context, nullptr, context_attribs);
+    g_gl_context =
+        wglCreateContextAttribsARB(g_device_context, nullptr, context_attribs);
     if (!g_gl_context) {
-        printf("Failed to create OpenGL 3.3 context\n");
+        println("Failed to create OpenGL 3.3 context");
         return false;
     }
 
@@ -288,12 +344,12 @@ static b32 create_window_and_context(HINSTANCE hInstance) {
 
     // Load OpenGL functions
     if (!gl_load_functions(win32_gl_get_proc_address)) {
-        printf("Failed to load OpenGL functions\n");
+        println("Failed to load OpenGL functions");
         return false;
     }
 
-    printf("OpenGL Version: %s\n", glGetString(GL_VERSION));
-    printf("OpenGL Renderer: %s\n", glGetString(GL_RENDERER));
+    println("OpenGL Version: {}", (const char*)glGetString(GL_VERSION));
+    println("OpenGL Renderer: {}", (const char*)glGetString(GL_RENDERER));
 
     return true;
 }
@@ -317,7 +373,12 @@ static f64 get_time_seconds() {
     return (f64)counter.QuadPart / (f64)g_perf_frequency.QuadPart;
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+int WINAPI WinMain(
+    HINSTANCE hInstance,
+    HINSTANCE hPrevInstance,
+    LPSTR lpCmdLine,
+    int nCmdShow
+) {
     (void)hPrevInstance;
     (void)lpCmdLine;
     (void)nCmdShow;
@@ -343,7 +404,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     void* base_memory = platform_alloc(total_size);
     if (!base_memory) {
-        printf("Failed to allocate game memory\n");
+        println("Failed to allocate game memory");
         return 1;
     }
 
@@ -354,7 +415,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // Arena for render commands
     void* render_memory = platform_alloc(MB(4));
     if (!render_memory) {
-        printf("Failed to allocate render memory\n");
+        println("Failed to allocate render memory");
         return 1;
     }
 
@@ -366,15 +427,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     g_renderer = renderer_init();
 
     // Load game code
-    g_game_dll = platform_load_game_code(
-        "out/game.dll",
-        "out/game_temp",
-        "lock.tmp"
-    );
+    g_game_dll =
+        platform_load_game_code("out/game.dll", "out/game_temp", "lock.tmp");
     g_game_code = platform_get_game_code(&g_game_dll);
 
     if (!g_game_code.is_valid) {
-        printf("Warning: Failed to load game code\n");
+        println("Warning: Failed to load game code");
     }
 
     f64 last_time = get_time_seconds();

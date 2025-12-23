@@ -4,9 +4,15 @@
 
 struct Renderer;
 
-Renderer* renderer_init();
+Renderer* renderer_init(void);
 
-void renderer_begin_frame(Renderer* renderer, u32 width, u32 height);
+void renderer_begin_frame(
+    Renderer* renderer,
+    u32 width,
+    u32 height,
+    u32 target_width,
+    u32 target_height
+);
 void renderer_end_frame(Renderer* renderer);
 
 void renderer_draw_rect(
@@ -24,6 +30,20 @@ void renderer_draw_sprite(
     f32 y,
     f32 w,
     f32 h,
+    u32 texture_id,
+    Color tint
+);
+
+void renderer_draw_atlas_sprite(
+    Renderer* renderer,
+    f32 x,
+    f32 y,
+    f32 w,
+    f32 h,
+    f32 u0,
+    f32 v0,
+    f32 u1,
+    f32 v1,
     u32 texture_id,
     Color tint
 );

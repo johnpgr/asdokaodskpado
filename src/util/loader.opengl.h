@@ -4,18 +4,21 @@
 
 // Include system OpenGL headers - they define types and some functions
 #ifdef _WIN32
-    #define WIN32_LEAN_AND_MEAN
-    #include <windows.h>
-    #include <gl/gl.h>
+#define WIN32_LEAN_AND_MEAN
+#include <gl/gl.h>
+#include <windows.h>
+#elif defined(__APPLE__)
+#define GL_SILENCE_DEPRECATION
+#include <OpenGL/gl3.h>
 #else
-    #define GL_GLEXT_PROTOTYPES
-    #include <GL/gl.h>
-    #include <GL/glext.h>
+#define GL_GLEXT_PROTOTYPES
+#include <GL/gl.h>
+#include <GL/glext.h>
 #endif
 
 // On Windows, we need to manually load extension functions
-// On Linux with GL_GLEXT_PROTOTYPES, functions are available but we still load them
-// to support older drivers
+// On Linux with GL_GLEXT_PROTOTYPES, functions are available but we still load
+// them to support older drivers
 
 // Additional OpenGL types not always defined
 #ifndef GL_VERSION_2_0
@@ -74,22 +77,53 @@ typedef ptrdiff_t GLintptr;
 typedef void (*GL_PFNGLGENBUFFERSPROC)(GLsizei n, GLuint* buffers);
 typedef void (*GL_PFNGLDELETEBUFFERSPROC)(GLsizei n, const GLuint* buffers);
 typedef void (*GL_PFNGLBINDBUFFERPROC)(GLenum target, GLuint buffer);
-typedef void (*GL_PFNGLBUFFERDATAPROC)(GLenum target, GLsizeiptr size, const void* data, GLenum usage);
-typedef void (*GL_PFNGLBUFFERSUBDATAPROC)(GLenum target, GLintptr offset, GLsizeiptr size, const void* data);
+typedef void (*GL_PFNGLBUFFERDATAPROC)(
+    GLenum target,
+    GLsizeiptr size,
+    const void* data,
+    GLenum usage
+);
+typedef void (*GL_PFNGLBUFFERSUBDATAPROC)(
+    GLenum target,
+    GLintptr offset,
+    GLsizeiptr size,
+    const void* data
+);
 
 typedef void (*GL_PFNGLGENVERTEXARRAYSPROC)(GLsizei n, GLuint* arrays);
 typedef void (*GL_PFNGLDELETEVERTEXARRAYSPROC)(GLsizei n, const GLuint* arrays);
 typedef void (*GL_PFNGLBINDVERTEXARRAYPROC)(GLuint array);
-typedef void (*GL_PFNGLVERTEXATTRIBPOINTERPROC)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void* pointer);
+typedef void (*GL_PFNGLVERTEXATTRIBPOINTERPROC)(
+    GLuint index,
+    GLint size,
+    GLenum type,
+    GLboolean normalized,
+    GLsizei stride,
+    const void* pointer
+);
 typedef void (*GL_PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint index);
 typedef void (*GL_PFNGLDISABLEVERTEXATTRIBARRAYPROC)(GLuint index);
 
 typedef GLuint (*GL_PFNGLCREATESHADERPROC)(GLenum type);
 typedef void (*GL_PFNGLDELETESHADERPROC)(GLuint shader);
-typedef void (*GL_PFNGLSHADERSOURCEPROC)(GLuint shader, GLsizei count, const GLchar* const* string, const GLint* length);
+typedef void (*GL_PFNGLSHADERSOURCEPROC)(
+    GLuint shader,
+    GLsizei count,
+    const GLchar* const* string,
+    const GLint* length
+);
 typedef void (*GL_PFNGLCOMPILESHADERPROC)(GLuint shader);
-typedef void (*GL_PFNGLGETSHADERIVPROC)(GLuint shader, GLenum pname, GLint* params);
-typedef void (*GL_PFNGLGETSHADERINFOLOGPROC)(GLuint shader, GLsizei maxLength, GLsizei* length, GLchar* infoLog);
+typedef void (*GL_PFNGLGETSHADERIVPROC)(
+    GLuint shader,
+    GLenum pname,
+    GLint* params
+);
+typedef void (*GL_PFNGLGETSHADERINFOLOGPROC)(
+    GLuint shader,
+    GLsizei maxLength,
+    GLsizei* length,
+    GLchar* infoLog
+);
 
 typedef GLuint (*GL_PFNGLCREATEPROGRAMPROC)(void);
 typedef void (*GL_PFNGLDELETEPROGRAMPROC)(GLuint program);
@@ -97,21 +131,53 @@ typedef void (*GL_PFNGLATTACHSHADERPROC)(GLuint program, GLuint shader);
 typedef void (*GL_PFNGLDETACHSHADERPROC)(GLuint program, GLuint shader);
 typedef void (*GL_PFNGLLINKPROGRAMPROC)(GLuint program);
 typedef void (*GL_PFNGLUSEPROGRAMPROC)(GLuint program);
-typedef void (*GL_PFNGLGETPROGRAMIVPROC)(GLuint program, GLenum pname, GLint* params);
-typedef void (*GL_PFNGLGETPROGRAMINFOLOGPROC)(GLuint program, GLsizei maxLength, GLsizei* length, GLchar* infoLog);
-typedef GLint (*GL_PFNGLGETUNIFORMLOCATIONPROC)(GLuint program, const GLchar* name);
+typedef void (*GL_PFNGLGETPROGRAMIVPROC)(
+    GLuint program,
+    GLenum pname,
+    GLint* params
+);
+typedef void (*GL_PFNGLGETPROGRAMINFOLOGPROC)(
+    GLuint program,
+    GLsizei maxLength,
+    GLsizei* length,
+    GLchar* infoLog
+);
+typedef GLint (*GL_PFNGLGETUNIFORMLOCATIONPROC)(
+    GLuint program,
+    const GLchar* name
+);
 typedef void (*GL_PFNGLUNIFORM1IPROC)(GLint location, GLint v0);
 typedef void (*GL_PFNGLUNIFORM1FPROC)(GLint location, GLfloat v0);
 typedef void (*GL_PFNGLUNIFORM2FPROC)(GLint location, GLfloat v0, GLfloat v1);
-typedef void (*GL_PFNGLUNIFORM3FPROC)(GLint location, GLfloat v0, GLfloat v1, GLfloat v2);
-typedef void (*GL_PFNGLUNIFORM4FPROC)(GLint location, GLfloat v0, GLfloat v1, GLfloat v2, GLfloat v3);
+typedef void (*GL_PFNGLUNIFORM3FPROC)(
+    GLint location,
+    GLfloat v0,
+    GLfloat v1,
+    GLfloat v2
+);
+typedef void (*GL_PFNGLUNIFORM4FPROC)(
+    GLint location,
+    GLfloat v0,
+    GLfloat v1,
+    GLfloat v2,
+    GLfloat v3
+);
 
 typedef void (*GL_PFNGLACTIVETEXTUREPROC)(GLenum texture);
 
 typedef void (*GL_PFNGLGENFRAMEBUFFERSPROC)(GLsizei n, GLuint* framebuffers);
-typedef void (*GL_PFNGLDELETEFRAMEBUFFERSPROC)(GLsizei n, const GLuint* framebuffers);
+typedef void (*GL_PFNGLDELETEFRAMEBUFFERSPROC)(
+    GLsizei n,
+    const GLuint* framebuffers
+);
 typedef void (*GL_PFNGLBINDFRAMEBUFFERPROC)(GLenum target, GLuint framebuffer);
-typedef void (*GL_PFNGLFRAMEBUFFERTEXTURE2DPROC)(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+typedef void (*GL_PFNGLFRAMEBUFFERTEXTURE2DPROC)(
+    GLenum target,
+    GLenum attachment,
+    GLenum textarget,
+    GLuint texture,
+    GLint level
+);
 typedef GLenum (*GL_PFNGLCHECKFRAMEBUFFERSTATUSPROC)(GLenum target);
 
 // Extension function pointers with gl_ prefix to avoid conflicts

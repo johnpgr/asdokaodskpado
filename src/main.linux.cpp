@@ -1,24 +1,24 @@
 // Linux Platform Layer - X11 + GLX + OpenGL 3.3 Core
 
+#include <GL/glx.h>
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
-#include <GL/glx.h>
 #include <dlfcn.h>
-#include <stdio.h>
+#include <print>
+
+using std::println;
 #include <string.h>
 #include <time.h>
 
 #include "game_interface.h"
 #include "platform/dll_loader.h"
+#include "platform/loader.opengl.h"
 #include "platform/memory.h"
-#include "platform/opengl_loader.h"
 #include "renderer.h"
 
 // GLX extension for creating modern OpenGL context
-typedef GLXContext (*glXCreateContextAttribsARBProc)(
-    Display*, GLXFBConfig, GLXContext, Bool, const int*
-);
+typedef GLXContext (*glXCreateContextAttribsARBProc)(Display*, GLXFBConfig, GLXContext, Bool, const int*);
 
 #define GLX_CONTEXT_MAJOR_VERSION_ARB 0x2091
 #define GLX_CONTEXT_MINOR_VERSION_ARB 0x2092
@@ -60,6 +60,24 @@ static void reset_input_half_transitions(GameInput* input) {
     }
 }
 
+/**
+ * Executes all render commands stored in the command buffer.
+ *
+ * This function iterates through a linear arena of serialized render commands,
+ * parsing each command header to determine its type, then dispatching to the
+ * appropriate renderer function. Commands are tightly packed in memory with
+ * variable sizes based on their type.
+ *
+ * @param renderer  The renderer instance to execute commands on.
+ * @param commands  The render command buffer containing serialized commands.
+ *                  Commands are stored sequentially starting at arena.base,
+ *                  with arena.used indicating the total bytes of commands.
+ *
+ * Supported command types:
+ *   - RenderCommand_Clear:  Sets the clear color for the frame
+ *   - RenderCommand_Rect:   Draws a colored rectangle
+ *   - RenderCommand_Sprite: Draws a textured sprite with optional tint
+ */
 static void
 execute_render_commands(Renderer* renderer, RenderCommands* commands) {
     u8* base = (u8*)commands->arena.base;
@@ -78,16 +96,47 @@ execute_render_commands(Renderer* renderer, RenderCommands* commands) {
 
             case RenderCommand_Rect: {
                 RenderCommandRect* cmd = (RenderCommandRect*)at;
-                renderer_draw_rect(renderer, cmd->x, cmd->y, cmd->w, cmd->h, cmd->color);
+                renderer_draw_rect(
+                    renderer,
+                    cmd->x,
+                    cmd->y,
+                    cmd->w,
+                    cmd->h,
+                    cmd->color
+                );
                 at += sizeof(RenderCommandRect);
             } break;
 
             case RenderCommand_Sprite: {
                 RenderCommandSprite* cmd = (RenderCommandSprite*)at;
                 renderer_draw_sprite(
-                    renderer, cmd->x, cmd->y, cmd->w, cmd->h, cmd->texture_id, cmd->tint
+                    renderer,
+                    cmd->x,
+                    cmd->y,
+                    cmd->w,
+                    cmd->h,
+                    cmd->texture_id,
+                    cmd->tint
                 );
                 at += sizeof(RenderCommandSprite);
+            } break;
+
+            case RenderCommand_AtlasSprite: {
+                RenderCommandAtlasSprite* cmd = (RenderCommandAtlasSprite*)at;
+                renderer_draw_atlas_sprite(
+                    renderer,
+                    cmd->x,
+                    cmd->y,
+                    cmd->w,
+                    cmd->h,
+                    cmd->u0,
+                    cmd->v0,
+                    cmd->u1,
+                    cmd->v1,
+                    cmd->texture_id,
+                    cmd->tint
+                );
+                at += sizeof(RenderCommandAtlasSprite);
             } break;
         }
     }
@@ -122,12 +171,21 @@ static void process_keyboard_event(XKeyEvent* event, b32 is_down) {
 static void process_mouse_button_event(XButtonEvent* event, b32 is_down) {
     i32 button_index = -1;
     switch (event->button) {
-        case Button1: button_index = 0; break; // Left
-        case Button2: button_index = 2; break; // Middle
-        case Button3: button_index = 1; break; // Right
+        case Button1:
+            button_index = 0;
+            break; // Left
+        case Button2:
+            button_index = 2;
+            break; // Middle
+        case Button3:
+            button_index = 1;
+            break; // Right
     }
     if (button_index >= 0 && button_index < 3) {
-        process_button_event(&g_game_input.mouse_buttons[button_index], is_down);
+        process_button_event(
+            &g_game_input.mouse_buttons[button_index],
+            is_down
+        );
     }
 }
 
@@ -204,32 +262,46 @@ static void* linux_gl_get_proc_address(const char* name) {
 static b32 create_window_and_context() {
     g_display = XOpenDisplay(nullptr);
     if (!g_display) {
-        printf("Failed to open X display\n");
+        println("Failed to open X display");
         return false;
     }
 
     // GLX framebuffer config attributes
     int visual_attribs[] = {
-        GLX_X_RENDERABLE, True,
-        GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
-        GLX_RENDER_TYPE, GLX_RGBA_BIT,
-        GLX_X_VISUAL_TYPE, GLX_TRUE_COLOR,
-        GLX_RED_SIZE, 8,
-        GLX_GREEN_SIZE, 8,
-        GLX_BLUE_SIZE, 8,
-        GLX_ALPHA_SIZE, 8,
-        GLX_DEPTH_SIZE, 24,
-        GLX_STENCIL_SIZE, 8,
-        GLX_DOUBLEBUFFER, True,
+        GLX_X_RENDERABLE,
+        True,
+        GLX_DRAWABLE_TYPE,
+        GLX_WINDOW_BIT,
+        GLX_RENDER_TYPE,
+        GLX_RGBA_BIT,
+        GLX_X_VISUAL_TYPE,
+        GLX_TRUE_COLOR,
+        GLX_RED_SIZE,
+        8,
+        GLX_GREEN_SIZE,
+        8,
+        GLX_BLUE_SIZE,
+        8,
+        GLX_ALPHA_SIZE,
+        8,
+        GLX_DEPTH_SIZE,
+        24,
+        GLX_STENCIL_SIZE,
+        8,
+        GLX_DOUBLEBUFFER,
+        True,
         None
     };
 
     int fbcount;
     GLXFBConfig* fbc = glXChooseFBConfig(
-        g_display, DefaultScreen(g_display), visual_attribs, &fbcount
+        g_display,
+        DefaultScreen(g_display),
+        visual_attribs,
+        &fbcount
     );
     if (!fbc || fbcount == 0) {
-        printf("Failed to get GLX framebuffer config\n");
+        println("Failed to get GLX framebuffer config");
         return false;
     }
 
@@ -238,7 +310,7 @@ static b32 create_window_and_context() {
 
     XVisualInfo* vi = glXGetVisualFromFBConfig(g_display, best_fbc);
     if (!vi) {
-        printf("Failed to get visual info\n");
+        println("Failed to get visual info");
         return false;
     }
 
@@ -248,22 +320,29 @@ static b32 create_window_and_context() {
 
     XSetWindowAttributes swa = {};
     swa.colormap = cmap;
-    swa.event_mask =
-        ExposureMask | KeyPressMask | KeyReleaseMask |
-        ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
-        StructureNotifyMask;
+    swa.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask |
+                     ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
+                     StructureNotifyMask;
 
     g_window = XCreateWindow(
-        g_display, root,
-        0, 0, g_window_width, g_window_height, 0,
-        vi->depth, InputOutput, vi->visual,
-        CWColormap | CWEventMask, &swa
+        g_display,
+        root,
+        0,
+        0,
+        g_window_width,
+        g_window_height,
+        0,
+        vi->depth,
+        InputOutput,
+        vi->visual,
+        CWColormap | CWEventMask,
+        &swa
     );
 
     XFree(vi);
 
     if (!g_window) {
-        printf("Failed to create window\n");
+        println("Failed to create window");
         return false;
     }
 
@@ -276,29 +355,35 @@ static b32 create_window_and_context() {
 
     // Get glXCreateContextAttribsARB
     glXCreateContextAttribsARBProc glXCreateContextAttribsARB =
-        (glXCreateContextAttribsARBProc)glXGetProcAddressARB(
-            (const GLubyte*)"glXCreateContextAttribsARB"
-        );
+        (glXCreateContextAttribsARBProc
+        )glXGetProcAddressARB((const GLubyte*)"glXCreateContextAttribsARB");
 
     if (!glXCreateContextAttribsARB) {
-        printf("glXCreateContextAttribsARB not available\n");
+        println("glXCreateContextAttribsARB not available");
         return false;
     }
 
     // Create OpenGL 3.3 Core context
     int context_attribs[] = {
-        GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
-        GLX_CONTEXT_MINOR_VERSION_ARB, 3,
-        GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
+        GLX_CONTEXT_MAJOR_VERSION_ARB,
+        3,
+        GLX_CONTEXT_MINOR_VERSION_ARB,
+        3,
+        GLX_CONTEXT_PROFILE_MASK_ARB,
+        GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
         None
     };
 
     g_glx_context = glXCreateContextAttribsARB(
-        g_display, best_fbc, nullptr, True, context_attribs
+        g_display,
+        best_fbc,
+        nullptr,
+        True,
+        context_attribs
     );
 
     if (!g_glx_context) {
-        printf("Failed to create OpenGL 3.3 context\n");
+        println("Failed to create OpenGL 3.3 context");
         return false;
     }
 
@@ -307,12 +392,12 @@ static b32 create_window_and_context() {
 
     // Load OpenGL functions
     if (!gl_load_functions(linux_gl_get_proc_address)) {
-        printf("Failed to load OpenGL functions\n");
+        println("Failed to load OpenGL functions");
         return false;
     }
 
-    printf("OpenGL Version: %s\n", glGetString(GL_VERSION));
-    printf("OpenGL Renderer: %s\n", glGetString(GL_RENDERER));
+    println("OpenGL Version: {}", (const char*)glGetString(GL_VERSION));
+    println("OpenGL Renderer: {}", (const char*)glGetString(GL_RENDERER));
 
     return true;
 }
@@ -347,7 +432,7 @@ int main(int argc, char** argv) {
 
     void* base_memory = platform_alloc(total_size);
     if (!base_memory) {
-        printf("Failed to allocate game memory\n");
+        println("Failed to allocate game memory");
         return 1;
     }
 
@@ -358,7 +443,7 @@ int main(int argc, char** argv) {
     // Arena for render commands
     void* render_memory = platform_alloc(MB(4));
     if (!render_memory) {
-        printf("Failed to allocate render memory\n");
+        println("Failed to allocate render memory");
         return 1;
     }
 
@@ -370,15 +455,12 @@ int main(int argc, char** argv) {
     g_renderer = renderer_init();
 
     // Load game code
-    g_game_dll = platform_load_game_code(
-        "out/libgame.so",
-        "out/game_temp",
-        "lock.tmp"
-    );
+    g_game_dll =
+        platform_load_game_code("out/libgame.so", "out/game_temp", "lock.tmp");
     g_game_code = platform_get_game_code(&g_game_dll);
 
     if (!g_game_code.is_valid) {
-        printf("Warning: Failed to load game code\n");
+        println("Warning: Failed to load game code");
     }
 
     f64 last_time = get_time_seconds();
@@ -398,6 +480,37 @@ int main(int argc, char** argv) {
         // Reset render commands
         g_render_commands.arena.used = 0;
 
+        // Calculate dynamic target dimensions based on window aspect ratio
+        // Base: 320x180 (16:9), Max: 384x216
+        constexpr u32 BASE_WIDTH = 320;
+        constexpr u32 BASE_HEIGHT = 180;
+        constexpr u32 MAX_TARGET_WIDTH = 384;
+        constexpr u32 MAX_TARGET_HEIGHT = 216;
+
+        f32 base_aspect = (f32)BASE_WIDTH / (f32)BASE_HEIGHT;
+        f32 window_aspect = (f32)g_window_width / (f32)g_window_height;
+
+        u32 target_width, target_height;
+        if (window_aspect > base_aspect) {
+            // Window is wider - expand width (pillarbox -> overscan)
+            target_height = BASE_HEIGHT;
+            target_width = (u32)(BASE_HEIGHT * window_aspect);
+            if (target_width > MAX_TARGET_WIDTH) {
+                target_width = MAX_TARGET_WIDTH;
+            }
+        } else {
+            // Window is taller - expand height (letterbox -> overscan)
+            target_width = BASE_WIDTH;
+            target_height = (u32)(BASE_WIDTH / window_aspect);
+            if (target_height > MAX_TARGET_HEIGHT) {
+                target_height = MAX_TARGET_HEIGHT;
+            }
+        }
+
+        // Update render commands with current target dimensions
+        g_render_commands.width = target_width;
+        g_render_commands.height = target_height;
+
         // Update and render game
         if (g_game_code.is_valid) {
             g_game_code.update_and_render(
@@ -408,7 +521,13 @@ int main(int argc, char** argv) {
         }
 
         // Execute render commands
-        renderer_begin_frame(g_renderer, g_window_width, g_window_height);
+        renderer_begin_frame(
+            g_renderer,
+            g_window_width,
+            g_window_height,
+            target_width,
+            target_height
+        );
         execute_render_commands(g_renderer, &g_render_commands);
         renderer_end_frame(g_renderer);
 

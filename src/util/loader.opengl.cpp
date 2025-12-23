@@ -1,4 +1,4 @@
-#include "platform/opengl_loader.h"
+#include "util/loader.opengl.h"
 
 // Define extension function pointers
 GL_PFNGLGENBUFFERSPROC gl_GenBuffers = nullptr;
@@ -45,9 +45,9 @@ GL_PFNGLFRAMEBUFFERTEXTURE2DPROC gl_FramebufferTexture2D = nullptr;
 GL_PFNGLCHECKFRAMEBUFFERSTATUSPROC gl_CheckFramebufferStatus = nullptr;
 
 b32 gl_load_functions(void* (*get_proc_address)(const char*)) {
-    #define LOAD_GL(var, name) \
-        var = (decltype(var))get_proc_address(name); \
-        if (!var) return false;
+#define LOAD_GL(var, name)                                                     \
+    var = (decltype(var))get_proc_address(name);                               \
+    if (!var) return false;
 
     // Buffer functions (GL 1.5+)
     LOAD_GL(gl_GenBuffers, "glGenBuffers");
@@ -98,7 +98,7 @@ b32 gl_load_functions(void* (*get_proc_address)(const char*)) {
     LOAD_GL(gl_FramebufferTexture2D, "glFramebufferTexture2D");
     LOAD_GL(gl_CheckFramebufferStatus, "glCheckFramebufferStatus");
 
-    #undef LOAD_GL
+#undef LOAD_GL
 
     return true;
 }
